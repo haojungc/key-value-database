@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall
 EXE = main
-OBJS = utils.o
+OBJS = utils.o database.o
 
 all: $(EXE)
 
@@ -10,6 +10,9 @@ $(EXE): $(OBJS)
 
 utils.o: utils.c
 	$(CC) $(CFLAGS) -c utils.c
+
+database.o: database.c
+	$(CC) $(CFLAGS) -c database.c
 
 clean:
 	rm -f *.o $(EXE)

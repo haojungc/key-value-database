@@ -1,3 +1,4 @@
+#include "database.h"
 #include "utils.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -42,6 +43,7 @@ static void manage_database(const char *f_in) {
         exit(EXIT_FAILURE);
     }
     strncpy(dot, ".output", 8);
+    set_output_file(f_out);
 
     FILE *fp_in = safe_fopen(f_in, "r");
 
@@ -51,18 +53,18 @@ static void manage_database(const char *f_in) {
         uint64_t key1, key2;
         char value[128];
         if (sscanf(cmd, "PUT %lu %s", &key1, value) == 2) {
-            printf("PUT %lu %s\n", key1, value);
-            // put(key1, value);
+            // printf("PUT %lu %s\n", key1, value);
+            put(key1, value);
         } else if (sscanf(cmd, "GET %lu", &key1) == 1) {
-            printf("GET %lu\n", key1);
-            // get(key1);
+            // printf("GET %lu\n", key1);
+            get(key1);
         } else if (sscanf(cmd, "SCAN %lu %lu", &key1, &key2) == 2) {
-            printf("SCAN %lu %lu\n", key1, key2);
-            // scan(key1, key2);
+            // printf("SCAN %lu %lu\n", key1, key2);
+            scan(key1, key2);
         } else {
             fprintf(stderr, "Error: \"%s\" is an invalid command\n", cmd);
         }
     }
-
     fclose(fp_in);
+    close_output_file();
 }
