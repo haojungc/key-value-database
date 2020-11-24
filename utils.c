@@ -1,5 +1,13 @@
 #include "utils.h"
+#include <string.h>
 #include <sys/stat.h>
+
+int get_arg_index(int argc, char *argv[], const char *str) {
+    for (int i = 1; i < argc; i++)
+        if (strcmp(str, argv[i]) == 0)
+            return i;
+    return -1;
+}
 
 void *safe_malloc(size_t size) {
     void *ptr = malloc(size);
