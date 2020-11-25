@@ -9,30 +9,26 @@ static uint64_t *bit64;
 static size_t bloom_filter_size;
 
 void init_bloom_filter(size_t size) {
-    printf("initializing bloom filter...");
-    fflush(stdout);
+    puts("initializing bloom filter ...");
     bloom_filter_size = size;
     size_t len = size >> 6;
     bit64 = safe_calloc(len, sizeof(uint64_t));
-    puts("done");
 }
 
 void load_bloom_filter(const char *file_path) {
-    printf("loading bloom filter...");
-    fflush(stdout);
+    puts("loading bloom filter ...");
     FILE *fp = safe_fopen(file_path, "rb");
     safe_fread(bit64, sizeof(uint64_t), bloom_filter_size >> 6, fp);
     fclose(fp);
-    puts("done");
 }
 
 void save_bloom_filter(const char *file_path) {
-    printf("saving bloom filter...");
-    fflush(stdout);
+    puts("saving bloom filter ...");
+    /* TODO:
+     * reduce the overhead: http://www.cplusplus.com/reference/cstdio/rewind/ */
     FILE *fp = safe_fopen(file_path, "wb");
     safe_fwrite(bit64, sizeof(uint64_t), bloom_filter_size >> 6, fp);
     fclose(fp);
-    puts("done");
 }
 
 void free_bloom_filter() { free(bit64); }
