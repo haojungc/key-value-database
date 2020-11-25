@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
     for (int64_t i = 0; i < total_put; i++) {
         key1 = (((int64_t)rand() << 32) + rand()) & INT64_MAX;
         for (int j = 0; j < VALUE_LENGTH; j++) {
-            int index = rand() % 63;
+            int index = rand() % 62;
             value[j] = table[index];
         }
         // printf("key = %lu\n"
