@@ -64,8 +64,4 @@ void safe_mkdir(const char *directory, mode_t mode) {
     }
 }
 
-/* Returns 0 if the access is permitted, and -1 otherwise.
- * Ref:
- * https://www.gnu.org/software/libc/manual/html_node/Testing-File-Access.html
- */
 int file_exists(const char *filename) { return access(filename, F_OK); }
