@@ -1,20 +1,19 @@
 CC = gcc
 CFLAGS = -Wall -O0
-EXE = main
-OBJS = utils.o database.o
+EXEC = main
+OBJS = utils.o skiplist.o bloomfilter.o database.o main.o
 
-$(EXE): $(OBJS)
-	$(CC) $(CFLAGS) main.c $(OBJS) -o $(EXE)
+all: $(OBJS) $(EXEC)
 
-gen: utils.o
-	$(CC) $(CFLAGS) -o gen cmd_generator.c utils.o
+gen: cmd_generator.o utils.o
+	$(CC) $(CFLAGS) -o $@ $^
 
-utils.o: utils.c
-	$(CC) $(CFLAGS) -c utils.c
+$(EXEC): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS)
 
-database.o: database.c
-	$(CC) $(CFLAGS) -c database.c
+%.o: %.c
+	$(CC) $(CFLAGS) -c $<
 
 .PHONY: clean
 clean:
-	rm -f *.o $(EXE) gen
+	rm -f *.o $(EXEC) gen
