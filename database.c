@@ -2,6 +2,7 @@
 #include "bloomfilter.h"
 #include "skiplist.h"
 #include "utils.h"
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
