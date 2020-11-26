@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 
 /* Finds str in argv and returns its index. Returns -1 if not found. */
 int get_arg_index(int argc, char *argv[], const char *str);

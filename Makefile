@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -O0
+CFLAGS = -std=gnu99 -Wall -O0
 EXEC = main
 OBJS = utils.o skiplist.o bloomfilter.o database.o main.o
 
