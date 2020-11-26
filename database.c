@@ -10,9 +10,9 @@
 /* static variables */
 static FILE *fp;
 static const char *dir_path = "storage";
-#define MAX_PATH_LENGTH 30
-static char bf_file_path[MAX_PATH_LENGTH];
-#undef MAX_PATH_LENGTH
+#define MAX_FILENAME_LENGTH 50
+static char bf_file_path[MAX_FILENAME_LENGTH];
+#undef MAX_FILENAME_LENGTH
 
 /* extern functions */
 void init_database(const char *filename) {
