@@ -7,13 +7,25 @@
 
 const char *bf_filename = "bf.state";
 static uint64_t *bit64;
-static size_t bloom_filter_size;
+static const size_t bloom_filter_size = 0x1ULL << 31; /* 2^31 bits */
 
-void init_bloom_filter(size_t size) {
+/* static function prototypes */
+static uint32_t hash(const uint64_t key, const uint64_t a, const uint64_t b);
+
+/* static functions */
+static uint32_t hash(const uint64_t key, const uint64_t a, const uint64_t b) {
+    uint64_t left = key >> 32;
+    uint64_t right = key & UINT32_MAX;
+    left = (uint64_t)(a * left + b);
+    right = (uint64_t)(a * right + b);
+    return (left ^ right) & INT32_MAX;
+}
+
+/* extern functions */
+void init_bloom_filter() {
     puts("initializing bloom filter ...");
-    bloom_filter_size = size;
-    size_t len = size >> 6;
-    bit64 = safe_calloc(len, sizeof(uint64_t));
+    size_t bit64_length = bloom_filter_size >> 6;
+    bit64 = safe_calloc(bit64_length, sizeof(uint64_t));
 }
 
 void load_bloom_filter(const char *file_path) {
@@ -34,6 +46,59 @@ void save_bloom_filter(const char *file_path) {
 
 void free_bloom_filter() { free(bit64); }
 
-void set_bloom_filter(const uint64_t key) {}
+void set_bloom_filter(const uint64_t key) {
+    uint32_t h, index;
+    uint_fast8_t shift;
 
-int_fast8_t lookup_bloom_filter(const uint64_t key) {}
+    /* hash 1 */
+    h = hash(key, 31, 1150616525);
+    index = h >> 6;
+    shift = h - (index << 6);
+    // printf("index: %8u, shift: %2u\n", index, shift);
+    bit64[index] |= (0x1ULL << shift);
+
+    /* hash 2 */
+    h = hash(key, 23, 572251735);
+    index = h >> 6;
+    shift = h - (index << 6);
+    // printf("index: %8u, shift: %2u\n", index, shift);
+    bit64[index] |= (0x1ULL << shift);
+
+    /* hash 3 */
+    h = hash(key, 47, 258054038);
+    index = h >> 6;
+    shift = h - (index << 6);
+    // printf("index: %8u, shift: %2u\n", index, shift);
+    bit64[index] |= (0x1ULL << shift);
+}
+
+int_fast8_t lookup_bloom_filter(const uint64_t key) {
+    int_fast8_t is_in_database = 1;
+    uint32_t h, index;
+    uint_fast8_t shift;
+
+    /* hash 1 */
+    h = hash(key, 31, 1150616525);
+    index = h >> 6;
+    shift = h - (index << 6);
+    is_in_database &= ((bit64[index] >> shift) & 0x1);
+    if (!is_in_database)
+        return -1;
+
+    /* hash 2 */
+    h = hash(key, 23, 572251735);
+    index = h >> 6;
+    shift = h - (index << 6);
+    is_in_database &= ((bit64[index] >> shift) & 0x1);
+    if (!is_in_database)
+        return -1;
+
+    /* hash 3 */
+    h = hash(key, 47, 258054038);
+    index = h >> 6;
+    shift = h - (index << 6);
+    is_in_database &= ((bit64[index] >> shift) & 0x1);
+
+    /* Returns 0 if the key is found, otherwise returns -1 */
+    return is_in_database ? 0 : -1;
+}

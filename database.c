@@ -20,10 +20,9 @@ void init_database(const char *filename) {
     sprintf(bf_file_path, "%s/%s", dir_path, bf_filename);
     safe_mkdir(dir_path, ACCESSPERMS);
 
-    size_t size = 0x1UL << 31;
-    init_bloom_filter(size);
-
-    /* Loads the previous bloom filter if available */
+    /* Initializes the bloom filter.
+     * Loads the previous bloom filter if available */
+    init_bloom_filter();
     if (file_exists(bf_file_path) == 0)
         load_bloom_filter(bf_file_path);
 }
