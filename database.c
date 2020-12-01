@@ -8,18 +8,16 @@
 #include <sys/stat.h>
 
 /* static variables */
-static FILE *fp;
+static FILE *fp = NULL;
 static const char *dir_path = "storage";
 #define MAX_FILENAME_LENGTH 50
 static char bf_file_path[MAX_FILENAME_LENGTH];
 #undef MAX_FILENAME_LENGTH
 
 /* extern functions */
-void init_database(const char *filename) {
-    fp = safe_fopen(filename, "w");
+void init_database() {
     sprintf(bf_file_path, "%s/%s", dir_path, bf_filename);
     safe_mkdir(dir_path, ACCESSPERMS);
-
     /* Initializes the bloom filter.
      * Loads the previous bloom filter if available */
     init_bloom_filter();
@@ -28,9 +26,14 @@ void init_database(const char *filename) {
 }
 
 void close_database() {
-    fclose(fp);
+    if (fp != NULL)
+        fclose(fp);
     save_bloom_filter(bf_file_path);
     free_bloom_filter();
+}
+
+void set_output_filename(const char *filename) {
+    fp = safe_fopen(filename, "w");
 }
 
 void put(const uint64_t key, const char *value) {
