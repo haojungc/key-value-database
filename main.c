@@ -54,7 +54,7 @@ static void manage_database(const char *f_in) {
         // printf("%s", cmd);
         uint64_t key1, key2;
 #define VALUE_LENGTH 128
-        char value[VALUE_LENGTH];
+        char value[VALUE_LENGTH + 1];
 #undef VALUE_LENGTH
         if (sscanf(cmd, "PUT %lu %s", &key1, value) == 2) {
             // printf("PUT %lu %s\n", key1, value);
