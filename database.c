@@ -1,6 +1,5 @@
 #include "database.h"
 #include "bloomfilter.h"
-#include "skiplist.h"
 #include "utils.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -297,7 +296,6 @@ void get(const uint64_t key) {
         return;
     }
     /* Search key in database */
-    /* skip list */
 }
 
 void scan(const uint64_t key1, const uint64_t key2) {
