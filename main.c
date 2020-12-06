@@ -44,7 +44,9 @@ static void manage_database(const char *f_in) {
         exit(EXIT_FAILURE);
     }
     strncpy(dot, ".output", 8);
-    init_database();
+
+    database_t db;
+    init_database(&db);
 
     FILE *fp_in = safe_fopen(f_in, "r");
 
@@ -58,25 +60,25 @@ static void manage_database(const char *f_in) {
 #undef VALUE_LENGTH
         if (sscanf(cmd, "PUT %lu %s", &key1, value) == 2) {
             // printf("PUT %lu %s\n", key1, value);
-            put(key1, value);
+            db.put(key1, value);
         } else if (sscanf(cmd, "GET %lu", &key1) == 1) {
             if (output_is_set == false) {
-                set_output_filename(f_out);
+                db.set_output_filename(f_out);
                 output_is_set = true;
             }
             // printf("GET %lu\n", key1);
-            get(key1);
+            db.get(key1);
         } else if (sscanf(cmd, "SCAN %lu %lu", &key1, &key2) == 2) {
             if (output_is_set == false) {
-                set_output_filename(f_out);
+                db.set_output_filename(f_out);
                 output_is_set = true;
             }
             // printf("SCAN %lu %lu\n", key1, key2);
-            // scan(key1, key2);
+            // db.scan(key1, key2);
         } else {
             fprintf(stderr, "Error: \"%s\" is an invalid command\n", cmd);
         }
     }
     fclose(fp_in);
-    close_database();
+    db.close();
 }

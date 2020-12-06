@@ -45,6 +45,11 @@ static data_t buf[MAX_KEY];
 static size_t key_count = 0;
 
 /* static function prototypes */
+static void close();
+static void set_output_filename(const char *filename);
+static void put(const uint64_t key, const char *value);
+static void get(const uint64_t key);
+static void scan(const uint64_t key1, const uint64_t key2);
 static void load_metatable();
 static void save_metatable();
 /* Saves the buffer to a file (from start to end, inclusively). If there exists
@@ -65,6 +70,118 @@ static void overwrite_buffer_entry(const uint64_t key, const char *value,
 static void insert_after(const uint64_t key, const char *value, const int idx);
 
 /* static functions */
+static void close() {
+    puts("closing database ...");
+
+    save_buffer_to_file(A_START, MIN(key_count, MAX_KEY_PER_FILE) - 1);
+    if (key_count > MAX_KEY_PER_FILE) {
+        save_buffer_to_file(B_START, key_count - 1);
+    }
+    save_metatable();
+    bf.save(bf_file_path);
+    bf.free();
+    for (int i = 0; i < MAX_KEY; i++)
+        free(buf[i].value);
+    if (fp != NULL)
+        fclose(fp);
+}
+
+static void set_output_filename(const char *filename) {
+    fp = safe_fopen(filename, "w");
+}
+
+void put(const uint64_t key, const char *value) {
+    bf.add(key);
+
+    /* PUT data */
+    if (key_count == 0) {
+        /* Looks up metatable */
+        bool found = false;
+        for (int i = 0; i < meta_count; i++) {
+            if (metatable[i].total_keys < MAX_KEY_PER_FILE &&
+                key >= metatable[i].start_key && key <= metatable[i].end_key) {
+                swap_files(&metatable[i]);
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            put(key, value);
+        } else {
+            append_to_buffer(key, value);
+        }
+    } else {
+        bool belong_to_buf = key >= buf[0].key && key <= buf[key_count - 1].key;
+        if (belong_to_buf) {
+            /* TODO: too slow! implement B+ tree? */
+            /* Binary search */
+            uint32_t start = 0, end = key_count;
+            uint32_t idx;
+            while (true) {
+                idx = (start + end) >> 1;
+                if (key == buf[idx].key) {
+                    overwrite_buffer_entry(key, value, idx);
+                    break;
+                } else if (key < buf[idx].key) {
+                    if (key > buf[idx - 1].key) {
+                        insert_after(key, value, idx - 1);
+                        break;
+                    }
+                    end = idx;
+                } else {
+                    if (key < buf[idx + 1].key) {
+                        insert_after(key, value, idx);
+                        break;
+                    }
+                    start = idx;
+                }
+            }
+        } else {
+            /* Looks up metatable */
+            bool found = false;
+            for (int i = 0; i < meta_count; i++) {
+                if (key >= metatable[i].start_key &&
+                    key <= metatable[i].end_key) {
+                    swap_files(&metatable[i]);
+                    found = true;
+                    break;
+                }
+            }
+            if (found) {
+                put(key, value);
+            } else if (key < buf[0].key) {
+                /* Inserts to the beginning of the buffer */
+                insert_after(key, value, -1);
+            } else if (key > buf[key_count - 1].key) {
+                /* Appends the end of the buffer */
+                append_to_buffer(key, value);
+            }
+        }
+    }
+
+    /* Writes the second half (part B) of the buffer to a file */
+    if (key_count == MAX_KEY) {
+        save_buffer_to_file(B_START, B_END);
+        key_count -= MAX_KEY_PER_FILE;
+    }
+}
+
+static void get(const uint64_t key) {
+    int_fast8_t result = bf.lookup(key);
+    /* Not found */
+    if (result == -1) {
+        /* Write to output file */
+        return;
+    }
+    /* Search key in database */
+}
+
+static void scan(const uint64_t key1, const uint64_t key2) {
+    /* parallelizable? */
+    for (uint64_t i = key1; i <= key2; i++)
+        get(i);
+}
+
 static void load_metatable() {
     puts("loading metatable ...");
     FILE *file = safe_fopen(meta_file_path, "rb");
@@ -172,8 +289,14 @@ static void insert_after(const uint64_t key, const char *value, const int idx) {
 }
 
 /* extern functions */
-void init_database() {
+void init_database(database_t *db) {
     puts("initializing database ...");
+
+    db->close = close;
+    db->set_output_filename = set_output_filename;
+    db->put = put;
+    db->get = get;
+    db->scan = scan;
 
     /* Initializes the bloom filter and loads the previous bloom filter if
      * available. */
@@ -192,116 +315,4 @@ void init_database() {
     /* Allocates memory for the buffer */
     for (int i = 0; i < MAX_KEY; i++)
         buf[i].value = safe_malloc((VALUE_LENGTH + 1) * sizeof(char));
-}
-
-void close_database() {
-    puts("closing database ...");
-
-    save_buffer_to_file(A_START, MIN(key_count, MAX_KEY_PER_FILE) - 1);
-    if (key_count > MAX_KEY_PER_FILE) {
-        save_buffer_to_file(B_START, key_count - 1);
-    }
-    save_metatable();
-    bf.save(bf_file_path);
-    bf.free();
-    for (int i = 0; i < MAX_KEY; i++)
-        free(buf[i].value);
-    if (fp != NULL)
-        fclose(fp);
-}
-
-void set_output_filename(const char *filename) {
-    fp = safe_fopen(filename, "w");
-}
-
-void put(const uint64_t key, const char *value) {
-    bf.add(key);
-
-    /* PUT data */
-    if (key_count == 0) {
-        /* Looks up metatable */
-        bool found = false;
-        for (int i = 0; i < meta_count; i++) {
-            if (metatable[i].total_keys < MAX_KEY_PER_FILE &&
-                key >= metatable[i].start_key && key <= metatable[i].end_key) {
-                swap_files(&metatable[i]);
-                found = true;
-                break;
-            }
-        }
-        if (found) {
-            put(key, value);
-        } else {
-            append_to_buffer(key, value);
-        }
-    } else {
-        bool belong_to_buf = key >= buf[0].key && key <= buf[key_count - 1].key;
-        if (belong_to_buf) {
-            /* TODO: too slow! implement B+ tree? */
-            /* Binary search */
-            uint32_t start = 0, end = key_count;
-            uint32_t idx;
-            while (true) {
-                idx = (start + end) >> 1;
-                if (key == buf[idx].key) {
-                    overwrite_buffer_entry(key, value, idx);
-                    break;
-                } else if (key < buf[idx].key) {
-                    if (key > buf[idx - 1].key) {
-                        insert_after(key, value, idx - 1);
-                        break;
-                    }
-                    end = idx;
-                } else {
-                    if (key < buf[idx + 1].key) {
-                        insert_after(key, value, idx);
-                        break;
-                    }
-                    start = idx;
-                }
-            }
-        } else {
-            /* Looks up metatable */
-            bool found = false;
-            for (int i = 0; i < meta_count; i++) {
-                if (key >= metatable[i].start_key &&
-                    key <= metatable[i].end_key) {
-                    swap_files(&metatable[i]);
-                    found = true;
-                    break;
-                }
-            }
-            if (found) {
-                put(key, value);
-            } else if (key < buf[0].key) {
-                /* Inserts to the beginning of the buffer */
-                insert_after(key, value, -1);
-            } else if (key > buf[key_count - 1].key) {
-                /* Appends the end of the buffer */
-                append_to_buffer(key, value);
-            }
-        }
-    }
-
-    /* Writes the second half (part B) of the buffer to a file */
-    if (key_count == MAX_KEY) {
-        save_buffer_to_file(B_START, B_END);
-        key_count -= MAX_KEY_PER_FILE;
-    }
-}
-
-void get(const uint64_t key) {
-    int_fast8_t result = bf.lookup(key);
-    /* Not found */
-    if (result == -1) {
-        /* Write to output file */
-        return;
-    }
-    /* Search key in database */
-}
-
-void scan(const uint64_t key1, const uint64_t key2) {
-    /* parallelizable? */
-    for (uint64_t i = key1; i <= key2; i++)
-        get(i);
 }
