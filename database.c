@@ -36,6 +36,7 @@ typedef struct {
 static FILE *fp = NULL;
 static const char *dir_path = "storage";
 static const char *meta_file_path = "storage/meta";
+static bloomfilter_t bf;
 static char bf_file_path[MAX_FILENAME_LENGTH];
 static metadata_t metatable[MAX_METADATA];
 static size_t meta_count = 0;
@@ -174,14 +175,15 @@ static void insert_after(const uint64_t key, const char *value, const int idx) {
 void init_database() {
     puts("initializing database ...");
 
-    sprintf(bf_file_path, "%s/%s", dir_path, bf_filename);
-    safe_mkdir(dir_path, ACCESSPERMS);
-
     /* Initializes the bloom filter and loads the previous bloom filter if
      * available. */
-    init_bloom_filter();
+    init_bloomfilter(&bf);
+
+    sprintf(bf_file_path, "%s/%s", dir_path, bf.state_file);
+    safe_mkdir(dir_path, ACCESSPERMS);
+
     if (file_exists(bf_file_path) == 0)
-        load_bloom_filter(bf_file_path);
+        bf.load(bf_file_path);
 
     /* Loads the previous metatable if available */
     if (file_exists(meta_file_path) == 0)
@@ -200,8 +202,8 @@ void close_database() {
         save_buffer_to_file(B_START, key_count - 1);
     }
     save_metatable();
-    save_bloom_filter(bf_file_path);
-    free_bloom_filter();
+    bf.save(bf_file_path);
+    bf.free();
     for (int i = 0; i < MAX_KEY; i++)
         free(buf[i].value);
     if (fp != NULL)
@@ -213,7 +215,7 @@ void set_output_filename(const char *filename) {
 }
 
 void put(const uint64_t key, const char *value) {
-    set_bloom_filter(key);
+    bf.add(key);
 
     /* PUT data */
     if (key_count == 0) {
@@ -289,7 +291,7 @@ void put(const uint64_t key, const char *value) {
 }
 
 void get(const uint64_t key) {
-    int_fast8_t result = lookup_bloom_filter(key);
+    int_fast8_t result = bf.lookup(key);
     /* Not found */
     if (result == -1) {
         /* Write to output file */
