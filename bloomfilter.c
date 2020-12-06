@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static const char *state_file = "bf.state";
+static char state_file[] = "bf.state";
 static uint64_t *bit64;
 static const size_t bloom_filter_size = 0x1ULL << 31; /* 2^31 bits */
 
