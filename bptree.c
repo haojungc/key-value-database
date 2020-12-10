@@ -70,7 +70,15 @@ static void insert(const uint64_t key, char *value) {
     insert_into_leaf(node, key, value);
 }
 
-static char *search(const uint64_t key) {}
+static char *search(const uint64_t key) {
+    node_t *node = find_leaf(head, key);
+    for (int i = 0; i < node->key_count; i++) {
+        if (node->keys[i] == key) {
+            return (char *)node->ptrs[i];
+        }
+    }
+    return NULL;
+}
 
 // static void check() {
 //     if (head == NULL) {
