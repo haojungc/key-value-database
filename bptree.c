@@ -1,29 +1,38 @@
 #include "bptree.h"
+#include "definition.h"
 #include "utils.h"
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #define ORDER 5
 #define MAX_KEY (ORDER - 1)
-#define MAX_FILEPATH 50
+#define VALUE_LENGTH 128
+#define MAX_BUFFER_SIZE 2000000
+#define MAX_KEY_PER_FILE (MAX_BUFFER_SIZE / 2)
 
 static node_t *head = NULL;
-static char filepath[MAX_FILEPATH];
+static char *value_buf[MAX_BUFFER_SIZE];
+static size_t buf_key_count = 0;
 
 /* static function prototypes */
-static void load(const char *_filepath);
-static void save();
+static void load(metadata_t *metadata, const char *_filepath);
+static void save(metadata_t *metadata, const char *_filepath);
+static void split_and_save(metadata_t *metadata1, metadata_t *metadata2,
+                           const char *filepath1, const char *filepath2);
 static void free_memory();
-static void insert(const uint64_t key, char *value);
+static int_fast8_t insert(const uint64_t key, char *value);
 static char *search(const uint64_t key);
+static bool is_empty();
 // static void check();
 // static void show();
 
-/* Frees the memory allocated for node. */
-static void free_node(node_t *node);
 /* Frees the memory allocated for tree which the root is node. */
 static void free_tree(node_t *node);
+/* Stores the value in the value buffer and returns the pointer to it. */
+static char *store_value(const char *value);
 /* Gets the index where the key belongs to from the node. */
 static int_fast8_t get_key_idx(const node_t *node, const uint64_t key);
 /* Searches down from the root node and finds the leaf node where the key
@@ -40,34 +49,153 @@ static node_t *split_leaf(node_t *leaf, const uint64_t keys[], void *ptrs[]);
  * the new internal node. */
 static node_t *split_node(node_t *node, const uint64_t keys[], void *ptrs[]);
 /* Inserts a key and a value into leaf node. */
-static void insert_into_leaf(node_t *leaf, const uint64_t key, char *value);
+static int_fast8_t insert_into_leaf(node_t *leaf, const uint64_t key,
+                                    char *value);
 /* Inserts a key into internal node. */
 static void insert_into_node(node_t *node, node_t *child, const uint64_t key);
 
 /* static functions */
-static void load(const char *_filepath) {}
+static void load(metadata_t *metadata, const char *_filepath) {
+    printf("loading %lu keys from %s\n", metadata->total_keys, _filepath);
 
-static void save() {}
+    if (head != NULL) {
+        fprintf(stderr, "error: attempt to overwrite a non-empty B+ tree\n");
+        exit(EXIT_FAILURE);
+    }
+
+    FILE *file = safe_fopen(_filepath, "rb");
+    size_t total_keys = metadata->total_keys;
+    uint64_t key;
+    static char value[VALUE_LENGTH + 1];
+    for (int i = 0; i < total_keys; i++) {
+        safe_fread(&key, sizeof(uint64_t), 1, file);
+        safe_fread(value, sizeof(char), VALUE_LENGTH + 1, file);
+        insert(key, value);
+    }
+}
+
+static void save(metadata_t *metadata, const char *_filepath) {
+    printf("saving B+ tree to %s ...\n", _filepath);
+
+    if (head == NULL) {
+        return;
+    }
+
+    /* Traverses down until leaf node is reached */
+    node_t *node = head;
+    while (node->is_leaf == false) {
+        node = node->ptrs[0];
+    }
+
+    FILE *file = safe_fopen(_filepath, "wb");
+    size_t total_keys = 0;
+    uint64_t start_key = node->keys[0];
+    uint64_t end_key;
+    while (node != NULL) {
+        for (int i = 0; i < node->key_count; i++) {
+            end_key = node->keys[i];
+            safe_fwrite(&node->keys[i], sizeof(uint64_t), 1, file);
+            safe_fwrite(node->ptrs[i], sizeof(char), VALUE_LENGTH + 1, file);
+            total_keys++;
+        }
+        node = node->next;
+    }
+    fclose(file);
+
+    /* Updates metatable */
+    metadata->start_key = start_key;
+    metadata->end_key = end_key;
+    metadata->total_keys = total_keys;
+
+    free_tree(head);
+    head = NULL;
+    buf_key_count = 0;
+}
+
+static void split_and_save(metadata_t *metadata1, metadata_t *metadata2,
+                           const char *filepath1, const char *filepath2) {
+    printf("saving B+ tree to %s and %s ...\n", filepath1, filepath2);
+
+    if (head == NULL) {
+        return;
+    }
+
+    /* Traverses down until leaf node is reached */
+    node_t *node = head;
+    while (node->is_leaf == false) {
+        node = node->ptrs[0];
+    }
+
+    FILE *file[2];
+    file[0] = safe_fopen(filepath1, "wb");
+    file[1] = safe_fopen(filepath2, "wb");
+
+    /* Writes to the first file */
+    size_t total_keys = 0;
+    uint64_t start_key = node->keys[0];
+    uint64_t end_key;
+    while (total_keys <= MAX_KEY_PER_FILE) {
+        for (int i = 0; i < node->key_count; i++) {
+            end_key = node->keys[i];
+            safe_fwrite(&node->keys[i], sizeof(uint64_t), 1, file[0]);
+            safe_fwrite(node->ptrs[i], sizeof(char), VALUE_LENGTH + 1, file[0]);
+            total_keys++;
+        }
+        node = node->next;
+    }
+    /* Updates metatable1 */
+    metadata1->start_key = start_key;
+    metadata1->end_key = end_key;
+    metadata1->total_keys = total_keys;
+    printf("saved %lu keys to %s\n", total_keys, filepath1);
+
+    /* Writes to the second file */
+    total_keys = 0;
+    start_key = node->keys[0];
+    while (node != NULL) {
+        for (int i = 0; i < node->key_count; i++) {
+            end_key = node->keys[i];
+            safe_fwrite(&node->keys[i], sizeof(uint64_t), 1, file[1]);
+            safe_fwrite(node->ptrs[i], sizeof(char), VALUE_LENGTH + 1, file[1]);
+            total_keys++;
+        }
+        node = node->next;
+    }
+    /* Updates metatable2 */
+    metadata2->start_key = start_key;
+    metadata2->end_key = end_key;
+    metadata2->total_keys = total_keys;
+    printf("saved %lu keys to %s\n", total_keys, filepath2);
+
+    free_tree(head);
+    head = NULL;
+    buf_key_count = 0;
+    fclose(file[0]);
+    fclose(file[1]);
+}
 
 static void free_memory() {
     if (head != NULL) {
         free_tree(head);
         head = NULL;
     }
+    for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
+        free(value_buf[i]);
+    }
 }
 
-static void insert(const uint64_t key, char *value) {
+static int_fast8_t insert(const uint64_t key, char *value) {
     if (head == NULL) {
         node_t *leaf = create_leaf();
         head = leaf;
         leaf->keys[0] = key;
-        leaf->ptrs[0] = value;
+        leaf->ptrs[0] = store_value(value);
         leaf->key_count = 1;
-        return;
+        return 1;
     }
 
     node_t *node = find_leaf(head, key);
-    insert_into_leaf(node, key, value);
+    return insert_into_leaf(node, key, value);
 }
 
 static char *search(const uint64_t key) {
@@ -79,6 +207,8 @@ static char *search(const uint64_t key) {
     }
     return NULL;
 }
+
+static bool is_empty() { return head == NULL; }
 
 // static void check() {
 //     if (head == NULL) {
@@ -101,7 +231,7 @@ static char *search(const uint64_t key) {
 //         for (int i = 0; i < node->key_count; i++) {
 //             if (node->keys[i] <= prev_key) {
 //                 fprintf(stderr, "keys are not arranged in increasing
-//                 order\n"); printf("prev_key: %lu\n", prev_key); for (int i =
+//                 order\n"); printf("prev_key: %lu\n ", prev_key); for (int i =
 //                 0; i < node->key_count; i++) {
 //                     printf("%lu ", node->keys[i]);
 //                 }
@@ -114,7 +244,7 @@ static char *search(const uint64_t key) {
 //         node = node->next;
 //     }
 //     printf("total keys: %lu\n", total_keys);
-//     printf("\nSuccessful!\n");
+//     printf("Successful!\n");
 // }
 
 // static void show() {
@@ -147,22 +277,33 @@ static char *search(const uint64_t key) {
 //     printf("total keys: %lu\n", total_keys);
 // }
 
-static void free_node(node_t *node) {
-    free(node->keys);
-    free(node->ptrs);
-    free(node);
-}
-
 static void free_tree(node_t *node) {
     if (node->is_leaf) {
-        free_node(node);
+        /* No need to free ptrs, they will be freed when the database is
+         * closed
+         */
+        free(node->keys);
+        free(node);
         return;
     }
     /* Postorder Traversal */
     for (int i = 0; i < node->key_count + 1; i++) {
         free_tree(node->ptrs[i]);
     }
-    free_node(node);
+    free(node->keys);
+    free(node->ptrs);
+    free(node);
+}
+
+static char *store_value(const char *value) {
+    if (buf_key_count >= MAX_BUFFER_SIZE) {
+        fprintf(stderr, "error: value_count exceeded its maximum value\n");
+        exit(EXIT_FAILURE);
+    }
+    char *ptr = value_buf[buf_key_count];
+    strncpy(ptr, value, VALUE_LENGTH);
+    buf_key_count++;
+    return ptr;
 }
 
 static int_fast8_t get_key_idx(const node_t *node, const uint64_t key) {
@@ -209,8 +350,8 @@ static node_t *create_node() {
 static node_t *split_leaf(node_t *leaf, const uint64_t keys[], void *ptrs[]) {
     node_t *new_leaf = create_leaf();
 
-    /* Moves keys and values in the second half of the current leaf to the new
-     * leaf (including the median key and its corresponding value) */
+    /* Moves keys and values in the second half of the current leaf to the
+     * new leaf (including the median key and its corresponding value) */
     int_fast8_t total_keys = leaf->key_count;
     int_fast8_t median_idx = total_keys >> 1;
     for (int i = 0; i < median_idx; i++) {
@@ -261,15 +402,16 @@ static node_t *split_node(node_t *node, const uint64_t keys[], void *ptrs[]) {
     return new_node;
 }
 
-static void insert_into_leaf(node_t *leaf, const uint64_t key, char *value) {
+static int_fast8_t insert_into_leaf(node_t *leaf, const uint64_t key,
+                                    char *value) {
     static uint64_t keys[MAX_KEY + 1];
     static void *ptrs[MAX_KEY + 1];
     int_fast8_t inserted_idx = get_key_idx(leaf, key);
 
     /* Overwrites the existing value */
     if (inserted_idx < leaf->key_count && key == leaf->keys[inserted_idx]) {
-        leaf->ptrs[inserted_idx] = value;
-        return;
+        strncpy(leaf->ptrs[inserted_idx], value, VALUE_LENGTH);
+        return 0;
     }
 
     /* Sets the buffer values */
@@ -278,7 +420,7 @@ static void insert_into_leaf(node_t *leaf, const uint64_t key, char *value) {
         ptrs[i] = leaf->ptrs[i];
     }
     keys[inserted_idx] = key;
-    ptrs[inserted_idx] = value;
+    ptrs[inserted_idx] = store_value(value);
     for (int i = inserted_idx; i < leaf->key_count; i++) {
         keys[i + 1] = leaf->keys[i];
         ptrs[i + 1] = leaf->ptrs[i];
@@ -287,10 +429,10 @@ static void insert_into_leaf(node_t *leaf, const uint64_t key, char *value) {
 
     bool overflowed = (leaf->key_count > MAX_KEY);
     if (overflowed) {
-        /* Creates a leaf node and an internal node. The leaf node is used for
-         * storing keys and values in the second half of current leaf, and the
-         * internal is used for storing the median key found in the current
-         * leaf. */
+        /* Creates a leaf node and an internal node. The leaf node is used
+         * for storing keys and values in the second half of current leaf,
+         * and the internal is used for storing the median key found in the
+         * current leaf. */
         node_t *new_leaf = split_leaf(leaf, keys, ptrs);
 
         // printf("key %lu is moved upwards (leaf to node)\n",
@@ -315,6 +457,7 @@ static void insert_into_leaf(node_t *leaf, const uint64_t key, char *value) {
             leaf->ptrs[i] = ptrs[i];
         }
     }
+    return 1;
 }
 
 static void insert_into_node(node_t *node, node_t *child, const uint64_t key) {
@@ -341,10 +484,11 @@ static void insert_into_node(node_t *node, node_t *child, const uint64_t key) {
         // puts("internal node overflowed");
 
         /* If the parent node is full after inserting the key, create two
-         * internal nodes, one for storing keys in the second half (excluding
-         * the median key) of current node, the other for storing the median key
-         * (parent). Then move the median key upwards to the second node. Repeat
-         * the process until the new internal node is not full. */
+         * internal nodes, one for storing keys in the second half
+         * (excluding the median key) of current node, the other for storing
+         * the median key (parent). Then move the median key upwards to the
+         * second node. Repeat the process until the new internal node is
+         * not full. */
         /* current key_count: MAX_KEY + 1 */
         int_fast8_t median_idx = node->key_count >> 1;
         node_t *new_neighbor = split_node(node, keys, ptrs);
@@ -381,11 +525,16 @@ static void insert_into_node(node_t *node, node_t *child, const uint64_t key) {
 void init_bptree(bptree_t *bptree) {
     bptree->load = load;
     bptree->save = save;
+    bptree->split_and_save = split_and_save;
     bptree->free_memory = free_memory;
     bptree->insert = insert;
     bptree->search = search;
+    bptree->is_empty = is_empty;
     // bptree->check = check;
     // bptree->show = show;
+    for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
+        value_buf[i] = safe_malloc((VALUE_LENGTH + 1) * sizeof(char));
+    }
 }
 
 #undef ORDER

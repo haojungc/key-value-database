@@ -1,6 +1,8 @@
 #ifndef BPTREE_H
 #define BPTREE_H
+#include "definition.h"
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct node {
@@ -17,11 +19,14 @@ typedef struct node {
 } node_t;
 
 typedef struct bptree {
-    void (*load)(const char *filepath);
-    void (*save)();
+    void (*load)(metadata_t *metadata, const char *filepath);
+    void (*save)(metadata_t *metadata, const char *filepath);
+    void (*split_and_save)(metadata_t *metadata1, metadata_t *metadata2,
+                           const char *filepath1, const char *filepath2);
     void (*free_memory)();
-    void (*insert)(const uint64_t key, char *value);
+    int_fast8_t (*insert)(const uint64_t key, char *value);
     char *(*search)(const uint64_t key);
+    bool (*is_empty)();
     // void (*check)();
     // void (*show)();
 } bptree_t;
