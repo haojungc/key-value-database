@@ -5,6 +5,18 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 
+/* Uncomment "#define DEBUG_MODE" to replace DEBUG(s) with s.
+ * Comment out "#define DEBUG_MODE" to replace DEBUG(s) with empty string. */
+#define DEBUG_MODE
+#ifdef DEBUG_MODE
+#define DEBUG(s)                                                               \
+    do {                                                                       \
+        s                                                                      \
+    } while (0);
+#else
+#define DEBUG(s)
+#endif
+
 /* Finds str in argv and returns its index. Returns -1 if not found. */
 int get_arg_index(int argc, char *argv[], const char *str);
 

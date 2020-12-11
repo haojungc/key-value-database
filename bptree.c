@@ -9,7 +9,6 @@
 
 #define ORDER 5
 #define MAX_KEY (ORDER - 1)
-#define VALUE_LENGTH 128
 #define MAX_BUFFER_SIZE 2000000
 #define MAX_KEY_PER_FILE (MAX_BUFFER_SIZE / 2)
 
@@ -23,9 +22,10 @@ static void save(metadata_t *metadata, const char *_filepath);
 static void split_and_save(metadata_t *metadata1, metadata_t *metadata2,
                            const char *filepath1, const char *filepath2);
 static void free_memory();
-static int_fast8_t insert(const uint64_t key, char *value);
+static void insert(const uint64_t key, char *value);
 static char *search(const uint64_t key);
-static bool is_empty();
+static int_fast8_t is_empty();
+static int_fast8_t is_full();
 // static void check();
 // static void show();
 
@@ -49,14 +49,14 @@ static node_t *split_leaf(node_t *leaf, const uint64_t keys[], void *ptrs[]);
  * the new internal node. */
 static node_t *split_node(node_t *node, const uint64_t keys[], void *ptrs[]);
 /* Inserts a key and a value into leaf node. */
-static int_fast8_t insert_into_leaf(node_t *leaf, const uint64_t key,
-                                    char *value);
+static void insert_into_leaf(node_t *leaf, const uint64_t key, char *value);
 /* Inserts a key into internal node. */
 static void insert_into_node(node_t *node, node_t *child, const uint64_t key);
 
 /* static functions */
 static void load(metadata_t *metadata, const char *_filepath) {
-    printf("loading %lu keys from %s\n", metadata->total_keys, _filepath);
+    DEBUG(
+        printf("loading %lu keys from %s\n", metadata->total_keys, _filepath);)
 
     if (head != NULL) {
         fprintf(stderr, "error: attempt to overwrite a non-empty B+ tree\n");
@@ -72,10 +72,11 @@ static void load(metadata_t *metadata, const char *_filepath) {
         safe_fread(value, sizeof(char), VALUE_LENGTH + 1, file);
         insert(key, value);
     }
+    fclose(file);
 }
 
 static void save(metadata_t *metadata, const char *_filepath) {
-    printf("saving B+ tree to %s ...\n", _filepath);
+    DEBUG(printf("saving B+ tree to %s ...\n", _filepath);)
 
     if (head == NULL) {
         return;
@@ -107,6 +108,7 @@ static void save(metadata_t *metadata, const char *_filepath) {
     metadata->end_key = end_key;
     metadata->total_keys = total_keys;
 
+    DEBUG(printf("saved %lu keys to %s\n", total_keys, _filepath);)
     free_tree(head);
     head = NULL;
     buf_key_count = 0;
@@ -114,7 +116,7 @@ static void save(metadata_t *metadata, const char *_filepath) {
 
 static void split_and_save(metadata_t *metadata1, metadata_t *metadata2,
                            const char *filepath1, const char *filepath2) {
-    printf("saving B+ tree to %s and %s ...\n", filepath1, filepath2);
+    DEBUG(printf("saving B+ tree to %s and %s ...\n", filepath1, filepath2);)
 
     if (head == NULL) {
         return;
@@ -147,7 +149,7 @@ static void split_and_save(metadata_t *metadata1, metadata_t *metadata2,
     metadata1->start_key = start_key;
     metadata1->end_key = end_key;
     metadata1->total_keys = total_keys;
-    printf("saved %lu keys to %s\n", total_keys, filepath1);
+    DEBUG(printf("saved %lu keys to %s\n", total_keys, filepath1);)
 
     /* Writes to the second file */
     total_keys = 0;
@@ -165,7 +167,7 @@ static void split_and_save(metadata_t *metadata1, metadata_t *metadata2,
     metadata2->start_key = start_key;
     metadata2->end_key = end_key;
     metadata2->total_keys = total_keys;
-    printf("saved %lu keys to %s\n", total_keys, filepath2);
+    DEBUG(printf("saved %lu keys to %s\n", total_keys, filepath2);)
 
     free_tree(head);
     head = NULL;
@@ -184,18 +186,18 @@ static void free_memory() {
     }
 }
 
-static int_fast8_t insert(const uint64_t key, char *value) {
+static void insert(const uint64_t key, char *value) {
     if (head == NULL) {
         node_t *leaf = create_leaf();
         head = leaf;
         leaf->keys[0] = key;
         leaf->ptrs[0] = store_value(value);
         leaf->key_count = 1;
-        return 1;
+        return;
     }
 
     node_t *node = find_leaf(head, key);
-    return insert_into_leaf(node, key, value);
+    insert_into_leaf(node, key, value);
 }
 
 static char *search(const uint64_t key) {
@@ -208,7 +210,9 @@ static char *search(const uint64_t key) {
     return NULL;
 }
 
-static bool is_empty() { return head == NULL; }
+static int_fast8_t is_empty() { return head == NULL; }
+
+static int_fast8_t is_full() { return buf_key_count == MAX_BUFFER_SIZE; }
 
 // static void check() {
 //     if (head == NULL) {
@@ -402,8 +406,7 @@ static node_t *split_node(node_t *node, const uint64_t keys[], void *ptrs[]) {
     return new_node;
 }
 
-static int_fast8_t insert_into_leaf(node_t *leaf, const uint64_t key,
-                                    char *value) {
+static void insert_into_leaf(node_t *leaf, const uint64_t key, char *value) {
     static uint64_t keys[MAX_KEY + 1];
     static void *ptrs[MAX_KEY + 1];
     int_fast8_t inserted_idx = get_key_idx(leaf, key);
@@ -411,7 +414,7 @@ static int_fast8_t insert_into_leaf(node_t *leaf, const uint64_t key,
     /* Overwrites the existing value */
     if (inserted_idx < leaf->key_count && key == leaf->keys[inserted_idx]) {
         strncpy(leaf->ptrs[inserted_idx], value, VALUE_LENGTH);
-        return 0;
+        return;
     }
 
     /* Sets the buffer values */
@@ -457,7 +460,7 @@ static int_fast8_t insert_into_leaf(node_t *leaf, const uint64_t key,
             leaf->ptrs[i] = ptrs[i];
         }
     }
-    return 1;
+    return;
 }
 
 static void insert_into_node(node_t *node, node_t *child, const uint64_t key) {
@@ -530,6 +533,7 @@ void init_bptree(bptree_t *bptree) {
     bptree->insert = insert;
     bptree->search = search;
     bptree->is_empty = is_empty;
+    bptree->is_full = is_full;
     // bptree->check = check;
     // bptree->show = show;
     for (int i = 0; i < MAX_BUFFER_SIZE; i++) {

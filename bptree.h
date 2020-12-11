@@ -24,9 +24,10 @@ typedef struct bptree {
     void (*split_and_save)(metadata_t *metadata1, metadata_t *metadata2,
                            const char *filepath1, const char *filepath2);
     void (*free_memory)();
-    int_fast8_t (*insert)(const uint64_t key, char *value);
+    void (*insert)(const uint64_t key, char *value);
     char *(*search)(const uint64_t key);
-    bool (*is_empty)();
+    int_fast8_t (*is_empty)();
+    int_fast8_t (*is_full)();
     // void (*check)();
     // void (*show)();
 } bptree_t;

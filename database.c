@@ -2,6 +2,7 @@
 #include "bloomfilter.h"
 #include "bptree.h"
 #include "definition.h"
+#include "sorting.h"
 #include "utils.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -10,6 +11,8 @@
 #include <sys/stat.h>
 
 /* macros */
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define MAX_FILENAME_LENGTH 50
 #define MAX_METADATA 100
 #define MAX_KEY 2000000
@@ -24,6 +27,7 @@ static bptree_t bptree;
 static metadata_t metatable[MAX_METADATA];
 static size_t meta_count = 0;
 static int32_t loaded_file = -1;
+static data_t *put_buf;
 static size_t key_count = 0;
 
 /* static function prototypes */
@@ -37,6 +41,9 @@ static void save_metatable();
 /* Saves the first half of the buffer to the file and loads the file found from
  * the metatable. */
 static void swap_files(metadata_t *metadata);
+static void sort_put_buffer(const int32_t start, const int32_t end);
+/* Flushes the PUT buffer by inserting the data into B+ tree. */
+static void flush_put_buffer();
 
 /* static functions */
 static void close() {
@@ -44,6 +51,9 @@ static void close() {
 
     bf.save(bf_file_path);
     bf.free();
+
+    /* Flushes the buffer to B+ tree */
+    flush_put_buffer();
 
     /* Saves B+ tree */
     if (!bptree.is_empty()) {
@@ -58,6 +68,11 @@ static void close() {
 
     save_metatable();
 
+    for (int i = 0; i < MAX_KEY; i++) {
+        free(put_buf[i].value);
+    }
+    free(put_buf);
+
     if (fp != NULL)
         fclose(fp);
 }
@@ -69,36 +84,16 @@ static void set_output_filename(const char *filename) {
 static void put(const uint64_t key, char *value) {
     bf.add(key);
 
-    /* Looks up the metatable */
-    /* TODO: inefficient if the input keys are distributed randomly, sort the
-     * keys before inserting into B+ tree */
-    for (int i = 0; i < meta_count; i++) {
-        bool need_to_swap = key >= metatable[i].start_key &&
-                            key <= metatable[i].end_key &&
-                            metatable[i].file_number != loaded_file;
-        if (need_to_swap) {
-            swap_files(&metatable[i]);
-            break;
-        }
+    /* Adds key-value to the buffer */
+    put_buf[key_count].key = key;
+    strncpy(put_buf[key_count].value, value, VALUE_LENGTH);
+    key_count++;
+
+    if (key_count < MAX_KEY) {
+        return;
     }
 
-    int_fast8_t key_increment = bptree.insert(key, value);
-    key_count += key_increment;
-    if (key_count >= MAX_KEY) {
-        /* Splits B+ tree into two parts and saves them separately */
-        static char file1[MAX_FILENAME_LENGTH + 1];
-        static char file2[MAX_FILENAME_LENGTH + 1];
-        size_t file_number1 = (loaded_file == -1) ? meta_count++ : loaded_file;
-        size_t file_number2 = meta_count++;
-        metatable[file_number1].file_number = file_number1;
-        metatable[file_number2].file_number = file_number2;
-        snprintf(file1, MAX_FILENAME_LENGTH, "%s/%lu", dir_path, file_number1);
-        snprintf(file2, MAX_FILENAME_LENGTH, "%s/%lu", dir_path, file_number2);
-        bptree.split_and_save(&metatable[file_number1],
-                              &metatable[file_number2], file1, file2);
-        loaded_file = -1;
-        key_count = 0;
-    }
+    flush_put_buffer();
 }
 
 static void get(const uint64_t key) {
@@ -109,9 +104,11 @@ static void get(const uint64_t key) {
         return;
     }
     /* Search key in database */
+    flush_put_buffer();
 }
 
 static void scan(const uint64_t key1, const uint64_t key2) {
+    flush_put_buffer();
     /* parallelizable? */
     for (uint64_t i = key1; i <= key2; i++)
         get(i);
@@ -161,9 +158,110 @@ static void swap_files(metadata_t *metadata) {
              metadata->file_number);
     bptree.load(metadata, filepath);
 
-    /* Updates information */
     loaded_file = metadata->file_number;
-    key_count = metadata->total_keys;
+}
+
+static void sort_put_buffer(const int32_t start, const int32_t end) {
+    if (end - start <= 1) {
+        return;
+    }
+    /* stable sort */
+    mergesort(put_buf, start, end);
+}
+
+static void flush_put_buffer() {
+    DEBUG(printf("keys in buffer: %lu\n", key_count);)
+
+    if (key_count == 0) {
+        return;
+    }
+
+    sort_put_buffer(0, key_count - 1);
+
+    uint64_t key;
+    char *value;
+    static uint64_t min_key = UINT64_MAX;
+    static uint64_t max_key = 0;
+    for (int i = 0; i < key_count; i++) {
+        key = put_buf[i].key;
+        value = put_buf[i].value;
+
+        if (key < min_key || key > max_key) {
+            /* Looks up the metatable */
+            bool found = false;
+            uint64_t min_diff = UINT64_MAX;
+            int32_t min_diff_idx = -1;
+            for (int i = 0; i < meta_count; i++) {
+                bool loaded = (metatable[i].file_number == loaded_file);
+                found = (!loaded && key >= metatable[i].start_key &&
+                         key <= metatable[i].end_key);
+                if (found) {
+                    swap_files(&metatable[i]);
+                    min_key = metatable[i].start_key;
+                    max_key = metatable[i].end_key;
+                    break;
+                }
+                /* Finds the file whose start key is larger than and nearest
+                 * to the key */
+                if (key < metatable[i].start_key) {
+                    uint64_t diff = metatable[i].start_key - key;
+                    if (diff < min_diff) {
+                        min_diff = diff;
+                        min_diff_idx = i;
+                    }
+                } else if (key > metatable[i].end_key) {
+                    /* Finds the file whose end key is less than and nearest to
+                     * the key */
+                    uint64_t diff = key - metatable[i].end_key;
+                    if (diff < min_diff) {
+                        min_diff = diff;
+                        min_diff_idx = i;
+                    }
+                }
+            }
+            if (!found) {
+                /* Swaps to the file whose start key or end key is nearest to
+                 * the key */
+                bool need_to_swap =
+                    (min_diff_idx != -1 &&
+                     metatable[min_diff_idx].file_number != loaded_file);
+                if (need_to_swap) {
+                    swap_files(&metatable[min_diff_idx]);
+                    min_key = MIN(key, metatable[min_diff_idx].start_key);
+                    max_key = MAX(key, metatable[min_diff_idx].end_key);
+                } else {
+                    /* Already loaded the file whose start key or end key is
+                     * nearest to the key */
+                    min_key = MIN(key, min_key);
+                    max_key = MAX(key, max_key);
+                }
+            }
+        }
+
+        bptree.insert(key, value);
+
+        /* Flushes the B+ tree */
+        if (bptree.is_full()) {
+            /* Splits B+ tree into two parts and saves them separately */
+            char file1[MAX_FILENAME_LENGTH + 1];
+            char file2[MAX_FILENAME_LENGTH + 1];
+            size_t file_number1 =
+                (loaded_file == -1) ? meta_count++ : loaded_file;
+            size_t file_number2 = meta_count++;
+            metatable[file_number1].file_number = file_number1;
+            metatable[file_number2].file_number = file_number2;
+            snprintf(file1, MAX_FILENAME_LENGTH, "%s/%lu", dir_path,
+                     file_number1);
+            snprintf(file2, MAX_FILENAME_LENGTH, "%s/%lu", dir_path,
+                     file_number2);
+            bptree.split_and_save(&metatable[file_number1],
+                                  &metatable[file_number2], file1, file2);
+            loaded_file = -1;
+            min_key = UINT64_MAX;
+            max_key = 0;
+        }
+    }
+    key_count = 0;
 }
 
 /* extern functions */
@@ -192,4 +290,9 @@ void init_database(database_t *db) {
 
     /* Initializes B+ tree */
     init_bptree(&bptree);
+
+    put_buf = safe_malloc(MAX_KEY * sizeof(data_t));
+    for (int i = 0; i < MAX_KEY; i++) {
+        put_buf[i].value = safe_malloc((VALUE_LENGTH + 1) * sizeof(char));
+    }
 }
