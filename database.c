@@ -13,7 +13,7 @@
 /* macros */
 #define MAX_FILENAME_LENGTH 50
 #define MAX_METADATA 200
-#define MAX_KEY 2000000
+#define MAX_BUFFER_SIZE 2000000
 
 /* static variables */
 static FILE *fp = NULL;
@@ -71,7 +71,7 @@ static void close() {
 
     save_metatable();
 
-    for (int i = 0; i < MAX_KEY; i++) {
+    for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
         free(put_buf[i].value);
     }
     free(put_buf);
@@ -92,7 +92,7 @@ static void put(const uint64_t key, char *value) {
     strncpy(put_buf[key_count].value, value, VALUE_LENGTH);
     key_count++;
 
-    if (key_count < MAX_KEY) {
+    if (key_count < MAX_BUFFER_SIZE) {
         return;
     }
 
@@ -402,8 +402,8 @@ void init_database(database_t *db) {
     /* Initializes B+ tree */
     init_bptree(&bptree);
 
-    put_buf = safe_malloc(MAX_KEY * sizeof(data_t));
-    for (int i = 0; i < MAX_KEY; i++) {
+    put_buf = safe_malloc(MAX_BUFFER_SIZE * sizeof(data_t));
+    for (int i = 0; i < MAX_BUFFER_SIZE; i++) {
         put_buf[i].value = safe_malloc((VALUE_LENGTH + 1) * sizeof(char));
     }
 }
