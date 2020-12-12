@@ -36,7 +36,8 @@ static void merge(data_t arr[], const int32_t start, const int32_t middle,
             arr[i] = b[count2++];
         } else if (count2 >= len2) {
             arr[i] = a[count1++];
-        } else if (a[count1].key < b[count2].key) {
+        } else if (a[count1].key <= b[count2].key) {
+            /* must use "<=" to achieve stable sorting */
             arr[i] = a[count1++];
         } else {
             arr[i] = b[count2++];
