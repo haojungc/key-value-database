@@ -21,6 +21,8 @@
 static FILE *fp = NULL;
 static const char *dir_path = "storage";
 static const char *meta_file_path = "storage/meta";
+static const char *empty_str = "EMPTY";
+static const char *newline = "\n";
 static bloomfilter_t bf;
 static char bf_file_path[MAX_FILENAME_LENGTH];
 static bptree_t bptree;
@@ -29,6 +31,9 @@ static size_t meta_count = 0;
 static int32_t loaded_file = -1;
 static data_t *put_buf;
 static size_t key_count = 0;
+static uint64_t min_key = UINT64_MAX;
+static uint64_t max_key = 0;
+static bool first_line = true;
 
 /* static function prototypes */
 static void close();
@@ -78,7 +83,7 @@ static void close() {
 }
 
 static void set_output_filename(const char *filename) {
-    fp = safe_fopen(filename, "w");
+    fp = safe_fopen(filename, "wb");
 }
 
 static void put(const uint64_t key, char *value) {
@@ -100,11 +105,55 @@ static void get(const uint64_t key) {
     int_fast8_t result = bf.lookup(key);
     /* Not found */
     if (result == -1) {
-        /* Write to output file */
+        /* Writes to output file */
+        if (first_line) {
+            first_line = false;
+        } else {
+            safe_fwrite(newline, sizeof(char), 1, fp);
+        }
+        safe_fwrite(empty_str, sizeof(char), strlen(empty_str), fp);
         return;
     }
-    /* Search key in database */
+
     flush_put_buffer();
+
+    /* Not in current B+ tree */
+    if (key < min_key || key > max_key) {
+        /* Looks up the metatable */
+        bool found = false;
+        for (int i = 0; i < meta_count; i++) {
+            found =
+                (key >= metatable[i].start_key && key <= metatable[i].end_key);
+            if (found) {
+                swap_files(&metatable[i]);
+                min_key = metatable[i].start_key;
+                max_key = metatable[i].end_key;
+                break;
+            }
+        }
+        if (!found) {
+            if (first_line) {
+                first_line = false;
+            } else {
+                safe_fwrite(newline, sizeof(char), 1, fp);
+            }
+            safe_fwrite(empty_str, sizeof(char), strlen(empty_str), fp);
+            return;
+        }
+    }
+
+    /* Writes the result to output file */
+    if (first_line) {
+        first_line = false;
+    } else {
+        safe_fwrite(newline, sizeof(char), 1, fp);
+    }
+    const char *value = bptree.search(key);
+    if (value == NULL) {
+        safe_fwrite(empty_str, sizeof(char), strlen(empty_str), fp);
+    } else {
+        safe_fwrite(value, sizeof(char), VALUE_LENGTH, fp);
+    }
 }
 
 static void scan(const uint64_t key1, const uint64_t key2) {
@@ -124,12 +173,11 @@ static void load_metatable() {
     }
     fclose(file);
 
-    /* Test output */
-    for (int i = 0; i < meta_count; i++) {
+    DEBUG(for (int i = 0; i < meta_count; i++) {
         printf("file_number: %lu, start: %lu, end: %lu, total_keys: %lu\n",
                metatable[i].file_number, metatable[i].start_key,
                metatable[i].end_key, metatable[i].total_keys);
-    }
+    })
 }
 
 static void save_metatable() {
@@ -180,8 +228,6 @@ static void flush_put_buffer() {
 
     uint64_t key;
     char *value;
-    static uint64_t min_key = UINT64_MAX;
-    static uint64_t max_key = 0;
     for (int i = 0; i < key_count; i++) {
         key = put_buf[i].key;
         value = put_buf[i].value;
@@ -240,6 +286,7 @@ static void flush_put_buffer() {
 
         bptree.insert(key, value);
 
+        /* TODO: move to the beginning of the for loop */
         /* Flushes the B+ tree */
         if (bptree.is_full()) {
             /* Splits B+ tree into two parts and saves them separately */

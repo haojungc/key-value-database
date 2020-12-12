@@ -12,6 +12,7 @@
 #define MAX_BUFFER_SIZE 2000000
 #define MAX_KEY_PER_FILE (MAX_BUFFER_SIZE / 2)
 
+/* static variables */
 static node_t *head = NULL;
 static char *value_buf[MAX_BUFFER_SIZE];
 static size_t buf_key_count = 0;
@@ -23,7 +24,7 @@ static void split_and_save(metadata_t *metadata1, metadata_t *metadata2,
                            const char *filepath1, const char *filepath2);
 static void free_memory();
 static void insert(const uint64_t key, char *value);
-static char *search(const uint64_t key);
+static const char *search(const uint64_t key);
 static int_fast8_t is_empty();
 static int_fast8_t is_full();
 // static void check();
@@ -200,7 +201,11 @@ static void insert(const uint64_t key, char *value) {
     insert_into_leaf(node, key, value);
 }
 
-static char *search(const uint64_t key) {
+static const char *search(const uint64_t key) {
+    if (head == NULL) {
+        return NULL;
+    }
+
     node_t *node = find_leaf(head, key);
     for (int i = 0; i < node->key_count; i++) {
         if (node->keys[i] == key) {
@@ -321,6 +326,10 @@ static int_fast8_t get_key_idx(const node_t *node, const uint64_t key) {
 }
 
 static node_t *find_leaf(node_t *root, const uint64_t key) {
+    if (root == NULL) {
+        return NULL;
+    }
+
     /* Traverses down until leaf node is reached */
     node_t *node = root;
     while (node->is_leaf == false) {

@@ -25,7 +25,7 @@ typedef struct bptree {
                            const char *filepath1, const char *filepath2);
     void (*free_memory)();
     void (*insert)(const uint64_t key, char *value);
-    char *(*search)(const uint64_t key);
+    const char *(*search)(const uint64_t key);
     int_fast8_t (*is_empty)();
     int_fast8_t (*is_full)();
     // void (*check)();

@@ -74,7 +74,7 @@ static void manage_database(const char *f_in) {
                 output_is_set = true;
             }
             // printf("SCAN %lu %lu\n", key1, key2);
-            // db.scan(key1, key2);
+            db.scan(key1, key2);
         } else {
             fprintf(stderr, "Error: \"%s\" is an invalid command\n", cmd);
         }
