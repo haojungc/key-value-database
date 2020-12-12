@@ -333,7 +333,7 @@ static void free_tree(node_t *node) {
 
 static char *store_value(const char *value) {
     if (buf_key_count >= MAX_BUFFER_SIZE) {
-        fprintf(stderr, "error: value_count exceeded its maximum value\n");
+        fprintf(stderr, "Error: value_count exceeded its maximum value\n");
         exit(EXIT_FAILURE);
     }
     char *ptr = value_buf[buf_key_count];
