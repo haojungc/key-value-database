@@ -32,7 +32,9 @@ static int_fast8_t is_full();
 // static void check();
 // static void show();
 
-/* Frees the memory allocated for tree which the root is node. */
+/* Frees the memory allocated for node */
+static void free_node(node_t *node);
+/* Frees the memory allocated for tree whose root is node. */
 static void free_tree(node_t *node);
 /* Stores the value in the value buffer and returns the pointer to it. */
 static char *store_value(const char *value);
@@ -311,22 +313,22 @@ static int_fast8_t is_full() { return buf_key_count == MAX_BUFFER_SIZE; }
 //     printf("total keys: %lu\n", total_keys);
 // }
 
+static void free_node(node_t *node) {
+    free(node->keys);
+    free(node->ptrs);
+    free(node);
+}
+
 static void free_tree(node_t *node) {
     if (node->is_leaf) {
-        /* No need to free ptrs, they will be freed when the database is
-         * closed
-         */
-        free(node->keys);
-        free(node);
+        free_node(node);
         return;
     }
     /* Postorder Traversal */
     for (int i = 0; i < node->key_count + 1; i++) {
         free_tree(node->ptrs[i]);
     }
-    free(node->keys);
-    free(node->ptrs);
-    free(node);
+    free_node(node);
 }
 
 static char *store_value(const char *value) {
