@@ -17,6 +17,9 @@
 #define DEBUG(s)
 #endif
 
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+
 /* Finds str in argv and returns its index. Returns -1 if not found. */
 int get_arg_index(int argc, char *argv[], const char *str);
 

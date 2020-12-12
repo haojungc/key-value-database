@@ -11,10 +11,8 @@
 #include <sys/stat.h>
 
 /* macros */
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
-#define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define MAX_FILENAME_LENGTH 50
-#define MAX_METADATA 100
+#define MAX_METADATA 200
 #define MAX_KEY 2000000
 
 /* static variables */
@@ -303,10 +301,27 @@ static void flush_put_buffer() {
         key = put_buf[i].key;
         value = put_buf[i].value;
 
+        /* Flushes the B+ tree */
+        if (bptree.is_full()) {
+            /* Splits B+ tree into two parts and saves one of them depending on
+             * the current key */
+            char file[MAX_FILENAME_LENGTH + 1];
+            size_t file_number =
+                (loaded_file == -1) ? meta_count++ : loaded_file;
+            metatable[file_number].file_number = file_number;
+            snprintf(file, MAX_FILENAME_LENGTH, "%s/%lu", dir_path,
+                     file_number);
+            bptree.split_and_save_one(&metatable[file_number], file, key);
+            loaded_file = -1;
+            min_key = bptree.get_min_key();
+            max_key = bptree.get_max_key();
+            DEBUG(printf("min_key: %lu, max_key: %lu\n", min_key, max_key);)
+        }
+
         if (key < min_key || key > max_key) {
             /* Looks up the metatable */
             bool found = false;
-            uint64_t min_diff = UINT64_MAX;
+            uint64_t min_diff = (key < min_key) ? min_key - key : key - max_key;
             int32_t min_diff_idx = -1;
             for (int i = 0; i < meta_count; i++) {
                 bool loaded = (metatable[i].file_number == loaded_file);
@@ -356,28 +371,6 @@ static void flush_put_buffer() {
         }
 
         bptree.insert(key, value);
-
-        /* TODO: move to the beginning of the for loop */
-        /* Flushes the B+ tree */
-        if (bptree.is_full()) {
-            /* Splits B+ tree into two parts and saves them separately */
-            char file1[MAX_FILENAME_LENGTH + 1];
-            char file2[MAX_FILENAME_LENGTH + 1];
-            size_t file_number1 =
-                (loaded_file == -1) ? meta_count++ : loaded_file;
-            size_t file_number2 = meta_count++;
-            metatable[file_number1].file_number = file_number1;
-            metatable[file_number2].file_number = file_number2;
-            snprintf(file1, MAX_FILENAME_LENGTH, "%s/%lu", dir_path,
-                     file_number1);
-            snprintf(file2, MAX_FILENAME_LENGTH, "%s/%lu", dir_path,
-                     file_number2);
-            bptree.split_and_save(&metatable[file_number1],
-                                  &metatable[file_number2], file1, file2);
-            loaded_file = -1;
-            min_key = UINT64_MAX;
-            max_key = 0;
-        }
     }
     key_count = 0;
 }

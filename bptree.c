@@ -16,12 +16,14 @@
 static node_t *head = NULL;
 static char *value_buf[MAX_BUFFER_SIZE];
 static size_t buf_key_count = 0;
+static uint64_t min_key = UINT64_MAX;
+static uint64_t max_key = 0;
 
 /* static function prototypes */
 static void load(metadata_t *metadata, const char *_filepath);
 static void save(metadata_t *metadata, const char *_filepath);
-static void split_and_save(metadata_t *metadata1, metadata_t *metadata2,
-                           const char *filepath1, const char *filepath2);
+static void split_and_save_one(metadata_t *metadata, const char *filepath,
+                               const uint64_t key);
 static void free_memory();
 static void insert(const uint64_t key, char *value);
 static const char *search(const uint64_t key);
@@ -29,6 +31,8 @@ static void scan(char *ptrs[], const uint64_t start_key,
                  const uint64_t end_key);
 static int_fast8_t is_empty();
 static int_fast8_t is_full();
+static uint64_t get_min_key();
+static uint64_t get_max_key();
 // static void check();
 // static void show();
 
@@ -64,7 +68,7 @@ static void load(metadata_t *metadata, const char *_filepath) {
         printf("loading %lu keys from %s\n", metadata->total_keys, _filepath);)
 
     if (head != NULL) {
-        fprintf(stderr, "error: attempt to overwrite a non-empty B+ tree\n");
+        fprintf(stderr, "Error: attempt to overwrite a non-empty B+ tree\n");
         exit(EXIT_FAILURE);
     }
 
@@ -117,12 +121,12 @@ static void save(metadata_t *metadata, const char *_filepath) {
     free_tree(head);
     head = NULL;
     buf_key_count = 0;
+    min_key = UINT64_MAX;
+    max_key = 0;
 }
 
-static void split_and_save(metadata_t *metadata1, metadata_t *metadata2,
-                           const char *filepath1, const char *filepath2) {
-    DEBUG(printf("saving B+ tree to %s and %s ...\n", filepath1, filepath2);)
-
+static void split_and_save_one(metadata_t *metadata, const char *filepath,
+                               const uint64_t key) {
     if (head == NULL) {
         return;
     }
@@ -132,53 +136,130 @@ static void split_and_save(metadata_t *metadata1, metadata_t *metadata2,
     while (node->is_leaf == false) {
         node = node->ptrs[0];
     }
+    node_t *first_leaf = node;
 
-    FILE *file[2];
-    file[0] = safe_fopen(filepath1, "wb");
-    file[1] = safe_fopen(filepath2, "wb");
-
-    /* Writes to the first file */
-    size_t total_keys = 0;
-    uint64_t start_key = node->keys[0];
-    uint64_t end_key;
-    while (total_keys <= MAX_KEY_PER_FILE) {
+    /* Finds the position of the pass-in key in the tree */
+    int32_t count = 0;
+    while (count <= MAX_KEY_PER_FILE) {
+        bool found = false;
         for (int i = 0; i < node->key_count; i++) {
-            end_key = node->keys[i];
-            safe_fwrite(&node->keys[i], sizeof(uint64_t), 1, file[0]);
-            safe_fwrite(node->ptrs[i], sizeof(char), VALUE_LENGTH + 1, file[0]);
-            total_keys++;
+            if (node->keys[i] >= key) {
+                found = true;
+                break;
+            }
+            count++;
         }
-        node = node->next;
-    }
-    /* Updates metatable1 */
-    metadata1->start_key = start_key;
-    metadata1->end_key = end_key;
-    metadata1->total_keys = total_keys;
-    DEBUG(printf("saved %lu keys to %s\n", total_keys, filepath1);)
-
-    /* Writes to the second file */
-    total_keys = 0;
-    start_key = node->keys[0];
-    while (node != NULL) {
-        for (int i = 0; i < node->key_count; i++) {
-            end_key = node->keys[i];
-            safe_fwrite(&node->keys[i], sizeof(uint64_t), 1, file[1]);
-            safe_fwrite(node->ptrs[i], sizeof(char), VALUE_LENGTH + 1, file[1]);
-            total_keys++;
+        if (found) {
+            break;
+        } else {
+            node = node->next;
         }
-        node = node->next;
     }
-    /* Updates metatable2 */
-    metadata2->start_key = start_key;
-    metadata2->end_key = end_key;
-    metadata2->total_keys = total_keys;
-    DEBUG(printf("saved %lu keys to %s\n", total_keys, filepath2);)
+    DEBUG(printf("key %lu is the %dth key in the tree\n", key, count);)
 
-    free_tree(head);
-    head = NULL;
-    buf_key_count = 0;
-    fclose(file[0]);
-    fclose(file[1]);
+    /* Writes key-values to file until total keys exceeds the maximum capacity
+     * of a file or the current key is greater than or equal to the passed-in
+     * key */
+    data_t *data = safe_malloc(MAX_BUFFER_SIZE * sizeof(data_t));
+    FILE *file;
+    file = safe_fopen(filepath, "wb");
+    node = first_leaf;
+    if (count < MAX_BUFFER_SIZE / 4) {
+        /* Stores the left part of the tree to the buffer */
+        size_t total_keys = 0;
+        while (total_keys <= MAX_KEY_PER_FILE) {
+            for (int i = 0; i < node->key_count; i++) {
+                data[total_keys].key = node->keys[i];
+                data[total_keys].value = node->ptrs[i];
+                total_keys++;
+            }
+            node = node->next;
+        }
+        /* Writes the right half of the tree to the file */
+        size_t remaining_keys = total_keys;
+        total_keys = 0;
+        uint64_t start_key = node->keys[0];
+        uint64_t end_key;
+        while (node != NULL) {
+            for (int i = 0; i < node->key_count; i++) {
+                end_key = node->keys[i];
+                safe_fwrite(&node->keys[i], sizeof(uint64_t), 1, file);
+                safe_fwrite(node->ptrs[i], sizeof(char), VALUE_LENGTH + 1,
+                            file);
+                total_keys++;
+            }
+            node = node->next;
+        }
+        /* Updates metatable */
+        metadata->start_key = start_key;
+        metadata->end_key = end_key;
+        metadata->total_keys = total_keys;
+        DEBUG(printf("saved %lu keys to %s\n", total_keys, filepath);)
+
+        /* Clears the current B+ tree */
+        free_tree(head);
+        head = NULL;
+        buf_key_count = 0;
+        min_key = UINT64_MAX;
+        max_key = 0;
+
+        /* Rebuilds a new B+ tree */
+        DEBUG(printf("inserting the remaining part of size %lu to the new B+ "
+                     "tree ...\n",
+                     remaining_keys);)
+        for (int i = 0; i < remaining_keys; i++) {
+            insert(data[i].key, data[i].value);
+        }
+    } else {
+        /* Writes the key-values which are smaller than the pass-in key to the
+         * file (maximum key-values to be written: MAX_KEY_PER_FILE) */
+        size_t total_keys = 0;
+        uint64_t start_key = node->keys[0];
+        uint64_t end_key;
+        int32_t max_key_count = MIN(count - MAX_KEY, MAX_KEY_PER_FILE);
+        while (total_keys <= max_key_count) {
+            for (int i = 0; i < node->key_count; i++) {
+                end_key = node->keys[i];
+                safe_fwrite(&node->keys[i], sizeof(uint64_t), 1, file);
+                safe_fwrite(node->ptrs[i], sizeof(char), VALUE_LENGTH + 1,
+                            file);
+                total_keys++;
+            }
+            node = node->next;
+        }
+        /* Updates metatable */
+        metadata->start_key = start_key;
+        metadata->end_key = end_key;
+        metadata->total_keys = total_keys;
+        DEBUG(printf("saved %lu keys to %s\n", total_keys, filepath);)
+
+        /* Saves the remaining part of the tree to the buffer */
+        total_keys = 0;
+        while (node != NULL) {
+            for (int i = 0; i < node->key_count; i++) {
+                data[total_keys].key = node->keys[i];
+                data[total_keys].value = node->ptrs[i];
+                total_keys++;
+            }
+            node = node->next;
+        }
+        /* Clears the current B+ tree */
+        free_tree(head);
+        head = NULL;
+        buf_key_count = 0;
+        min_key = UINT64_MAX;
+        max_key = 0;
+
+        /* Rebuilds a new B+ tree */
+        DEBUG(printf("inserting the remaining part of size %lu to the new B+ "
+                     "tree ...\n",
+                     total_keys);)
+        for (int i = 0; i < total_keys; i++) {
+            insert(data[i].key, data[i].value);
+        }
+    }
+    fclose(file);
+    free(data);
 }
 
 static void free_memory() {
@@ -246,6 +327,10 @@ static int_fast8_t is_empty() { return head == NULL; }
 
 static int_fast8_t is_full() { return buf_key_count == MAX_BUFFER_SIZE; }
 
+static uint64_t get_min_key() { return min_key; }
+
+static uint64_t get_max_key() { return max_key; }
+
 // static void check() {
 //     if (head == NULL) {
 //         return;
@@ -267,8 +352,8 @@ static int_fast8_t is_full() { return buf_key_count == MAX_BUFFER_SIZE; }
 //         for (int i = 0; i < node->key_count; i++) {
 //             if (node->keys[i] <= prev_key) {
 //                 fprintf(stderr, "keys are not arranged in increasing
-//                 order\n"); printf("prev_key: %lu\n ", prev_key); for (int i =
-//                 0; i < node->key_count; i++) {
+//                 order\n"); printf("prev_key: %lu\n ", prev_key); for (int
+//                 i = 0; i < node->key_count; i++) {
 //                     printf("%lu ", node->keys[i]);
 //                 }
 //                 printf("\n");
@@ -453,6 +538,10 @@ static void insert_into_leaf(node_t *leaf, const uint64_t key, char *value) {
         return;
     }
 
+    /* Updates information */
+    min_key = MIN(key, min_key);
+    max_key = MAX(key, max_key);
+
     /* Sets the buffer values */
     for (int i = 0; i < inserted_idx; i++) {
         keys[i] = leaf->keys[i];
@@ -564,13 +653,15 @@ static void insert_into_node(node_t *node, node_t *child, const uint64_t key) {
 void init_bptree(bptree_t *bptree) {
     bptree->load = load;
     bptree->save = save;
-    bptree->split_and_save = split_and_save;
+    bptree->split_and_save_one = split_and_save_one;
     bptree->free_memory = free_memory;
     bptree->insert = insert;
     bptree->search = search;
     bptree->scan = scan;
     bptree->is_empty = is_empty;
     bptree->is_full = is_full;
+    bptree->get_min_key = get_min_key;
+    bptree->get_max_key = get_max_key;
     // bptree->check = check;
     // bptree->show = show;
     for (int i = 0; i < MAX_BUFFER_SIZE; i++) {

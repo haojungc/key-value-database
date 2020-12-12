@@ -21,8 +21,8 @@ typedef struct node {
 typedef struct bptree {
     void (*load)(metadata_t *metadata, const char *filepath);
     void (*save)(metadata_t *metadata, const char *filepath);
-    void (*split_and_save)(metadata_t *metadata1, metadata_t *metadata2,
-                           const char *filepath1, const char *filepath2);
+    void (*split_and_save_one)(metadata_t *metadata, const char *filepath,
+                               const uint64_t key);
     void (*free_memory)();
     void (*insert)(const uint64_t key, char *value);
     const char *(*search)(const uint64_t key);
@@ -30,6 +30,8 @@ typedef struct bptree {
                  const uint64_t end_key);
     int_fast8_t (*is_empty)();
     int_fast8_t (*is_full)();
+    uint64_t (*get_min_key)();
+    uint64_t (*get_max_key)();
     // void (*check)();
     // void (*show)();
 } bptree_t;
