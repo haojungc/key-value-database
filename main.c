@@ -1,4 +1,5 @@
 #include "database.h"
+#include "definition.h"
 #include "utils.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -31,18 +32,27 @@ int main(int argc, char *argv[]) {
 }
 
 static void manage_database(const char *f_in) {
-    /* Sets the output file name */
-    char f_out[MAX_FILENAME_LENGTH];
-    strncpy(f_out, f_in, MAX_FILENAME_LENGTH);
-    /* File extension check */
-    char *dot = strrchr(f_out, '.');
-    char *extension = strstr(dot, ".input");
-    if (dot == NULL || extension == NULL) {
+    /* Checks file extension */
+    char *dot = strrchr(f_in, '.');
+    if (dot == NULL) {
         fprintf(stderr,
                 "Error: invalid input file name\n"
                 "file extension of the input file should be \".input\"\n");
         exit(EXIT_FAILURE);
     }
+    char *extension = strstr(dot, ".input");
+    if (extension == NULL) {
+        fprintf(stderr,
+                "Error: invalid input file name\n"
+                "file extension of the input file should be \".input\"\n");
+        exit(EXIT_FAILURE);
+    }
+
+    /* Sets the output filename */
+    char f_out[MAX_FILENAME_LENGTH];
+    char *slash = strrchr(f_in, '/');
+    strncpy(f_out, (slash == NULL) ? f_in : slash + 1, MAX_FILENAME_LENGTH);
+    dot = strrchr(f_out, '.');
     strncpy(dot, ".output", 8);
 
     database_t db;
@@ -55,9 +65,7 @@ static void manage_database(const char *f_in) {
     while (fgets(cmd, MAX_CMD_LENGTH, fp_in) != NULL) {
         // printf("%s", cmd);
         uint64_t key1, key2;
-#define VALUE_LENGTH 128
         static char value[VALUE_LENGTH + 1];
-#undef VALUE_LENGTH
         if (sscanf(cmd, "PUT %lu %s", &key1, value) == 2) {
             // printf("PUT %lu %s\n", key1, value);
             db.put(key1, value);
