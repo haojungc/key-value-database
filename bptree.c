@@ -25,6 +25,8 @@ static void split_and_save(metadata_t *metadata1, metadata_t *metadata2,
 static void free_memory();
 static void insert(const uint64_t key, char *value);
 static const char *search(const uint64_t key);
+static void scan(char *ptrs[], const uint64_t start_key,
+                 const uint64_t end_key);
 static int_fast8_t is_empty();
 static int_fast8_t is_full();
 // static void check();
@@ -213,6 +215,29 @@ static const char *search(const uint64_t key) {
         }
     }
     return NULL;
+}
+
+/* Note: values in ptrs are set to NULL before calling this functions */
+static void scan(char *ptrs[], const uint64_t start_key,
+                 const uint64_t end_key) {
+    if (head == NULL) {
+        return;
+    }
+
+    node_t *node = find_leaf(head, start_key);
+    while (node != NULL) {
+        for (int i = 0; i < node->key_count; i++) {
+            if (node->keys[i] > end_key) {
+                return;
+            }
+            if (node->keys[i] >= start_key) {
+                /* values from ptrs[node->keys[i - 1] - start_key + 1] to
+                 * ptrs[node->keys[i] - start_key -1] remain NULL */
+                ptrs[node->keys[i] - start_key] = node->ptrs[i];
+            }
+        }
+        node = node->next;
+    }
 }
 
 static int_fast8_t is_empty() { return head == NULL; }
@@ -541,6 +566,7 @@ void init_bptree(bptree_t *bptree) {
     bptree->free_memory = free_memory;
     bptree->insert = insert;
     bptree->search = search;
+    bptree->scan = scan;
     bptree->is_empty = is_empty;
     bptree->is_full = is_full;
     // bptree->check = check;

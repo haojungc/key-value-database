@@ -8,7 +8,7 @@ typedef struct database {
     void (*set_output_filename)(const char *filename);
     void (*put)(const uint64_t key, char *value);
     void (*get)(const uint64_t key);
-    void (*scan)(const uint64_t key1, const uint64_t key2);
+    void (*scan)(const uint64_t start_key, const uint64_t end_key);
 } database_t;
 
 void init_database(database_t *db);

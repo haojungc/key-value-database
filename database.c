@@ -40,7 +40,7 @@ static void close();
 static void set_output_filename(const char *filename);
 static void put(const uint64_t key, char *value);
 static void get(const uint64_t key);
-static void scan(const uint64_t key1, const uint64_t key2);
+static void scan(const uint64_t start_key, const uint64_t end_key);
 static void load_metatable();
 static void save_metatable();
 /* Saves the first half of the buffer to the file and loads the file found from
@@ -156,11 +156,82 @@ static void get(const uint64_t key) {
     }
 }
 
-static void scan(const uint64_t key1, const uint64_t key2) {
+static void scan(const uint64_t start_key, const uint64_t end_key) {
     flush_put_buffer();
-    /* parallelizable? */
-    for (uint64_t i = key1; i <= key2; i++)
-        get(i);
+
+    char **ptrs = safe_malloc((end_key - start_key + 1) * sizeof(char *));
+    for (uint64_t key = start_key; key <= end_key;) {
+        /* Not in current B+ tree */
+        if (key < min_key || key > max_key) {
+            /* Looks up the metatable */
+            bool found = false;
+            for (int i = 0; i < meta_count; i++) {
+                found = (key >= metatable[i].start_key &&
+                         key <= metatable[i].end_key);
+                if (found) {
+                    swap_files(&metatable[i]);
+                    min_key = metatable[i].start_key;
+                    max_key = metatable[i].end_key;
+
+                    /* Sets ptrs */
+                    uint64_t _end_key = MIN(end_key, max_key);
+                    size_t size = _end_key - key + 1;
+                    memset(ptrs, 0, size * sizeof(char *));
+                    bptree.scan(ptrs, key, _end_key);
+
+                    /* Writes ptrs to output file */
+                    for (int j = 0; j < size; j++) {
+                        if (first_line) {
+                            first_line = false;
+                        } else {
+                            safe_fwrite(newline, sizeof(char), 1, fp);
+                        }
+                        if (ptrs[j] == NULL) {
+                            safe_fwrite(empty_str, sizeof(char),
+                                        strlen(empty_str), fp);
+                        } else {
+                            safe_fwrite(ptrs[j], sizeof(char), VALUE_LENGTH,
+                                        fp);
+                        }
+                    }
+                    key = _end_key + 1;
+                    break;
+                }
+            }
+            if (!found) {
+                if (first_line) {
+                    first_line = false;
+                } else {
+                    safe_fwrite(newline, sizeof(char), 1, fp);
+                }
+                safe_fwrite(empty_str, sizeof(char), strlen(empty_str), fp);
+                key++;
+                continue;
+            }
+        } else {
+            /* Sets ptrs */
+            uint64_t _end_key = MIN(end_key, max_key);
+            size_t size = _end_key - key + 1;
+            memset(ptrs, 0, size * sizeof(char *));
+            bptree.scan(ptrs, key, _end_key);
+
+            /* Writes ptrs to output file */
+            for (int i = 0; i < size; i++) {
+                if (first_line) {
+                    first_line = false;
+                } else {
+                    safe_fwrite(newline, sizeof(char), 1, fp);
+                }
+                if (ptrs[i] == NULL) {
+                    safe_fwrite(empty_str, sizeof(char), strlen(empty_str), fp);
+                } else {
+                    safe_fwrite(ptrs[i], sizeof(char), VALUE_LENGTH, fp);
+                }
+            }
+            key = _end_key + 1;
+        }
+    }
+    free(ptrs);
 }
 
 static void load_metatable() {
