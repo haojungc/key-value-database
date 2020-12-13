@@ -1,8 +1,6 @@
 #ifndef BLOOMFILTER_H
 #define BLOOMFILTER_H
-#include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 typedef struct bloomfilter {
     /* Used for loading/saving the bloom filter */

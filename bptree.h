@@ -2,7 +2,6 @@
 #define BPTREE_H
 #include "definition.h"
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
 
 typedef struct node {
