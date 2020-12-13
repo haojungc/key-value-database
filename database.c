@@ -11,7 +11,6 @@
 #include <sys/stat.h>
 
 /* macros */
-#define MAX_FILENAME_LENGTH 50
 #define MAX_METADATA 200
 #define MAX_BUFFER_SIZE 2000000
 
@@ -22,7 +21,7 @@ static const char *meta_file_path = "storage/meta";
 static const char *empty_str = "EMPTY";
 static const char *newline = "\n";
 static bloomfilter_t bf;
-static char bf_file_path[MAX_FILENAME_LENGTH];
+static char bf_file_path[MAX_PATH + 1];
 static bptree_t bptree;
 static metadata_t metatable[MAX_METADATA];
 static size_t meta_count = 0;
@@ -60,11 +59,10 @@ static void close() {
 
     /* Saves B+ tree */
     if (!bptree.is_empty()) {
-        char filepath[MAX_FILENAME_LENGTH + 1];
+        char filepath[MAX_PATH + 1];
         size_t file_number = (loaded_file == -1) ? meta_count++ : loaded_file;
         metatable[file_number].file_number = file_number;
-        snprintf(filepath, MAX_FILENAME_LENGTH, "%s/%lu", dir_path,
-                 file_number);
+        snprintf(filepath, MAX_PATH, "%s/%lu", dir_path, file_number);
         bptree.save(&metatable[file_number], filepath);
     }
     bptree.free_memory();
@@ -259,20 +257,18 @@ static void save_metatable() {
 static void swap_files(metadata_t *metadata) {
     printf("swapping to file %lu ...\n", metadata->file_number);
 
-    static char filepath[MAX_FILENAME_LENGTH + 1];
+    static char filepath[MAX_PATH + 1];
 
     /* Saves B+ tree */
     if (!bptree.is_empty()) {
         size_t file_number = (loaded_file == -1) ? meta_count++ : loaded_file;
         metatable[file_number].file_number = file_number;
-        snprintf(filepath, MAX_FILENAME_LENGTH, "%s/%lu", dir_path,
-                 file_number);
+        snprintf(filepath, MAX_PATH, "%s/%lu", dir_path, file_number);
         bptree.save(&metatable[file_number], filepath);
     }
 
     /* Loads B+ tree */
-    snprintf(filepath, MAX_FILENAME_LENGTH, "%s/%lu", dir_path,
-             metadata->file_number);
+    snprintf(filepath, MAX_PATH, "%s/%lu", dir_path, metadata->file_number);
     bptree.load(metadata, filepath);
 
     loaded_file = metadata->file_number;
@@ -305,12 +301,11 @@ static void flush_put_buffer() {
         if (bptree.is_full()) {
             /* Splits B+ tree into two parts and saves one of them depending on
              * the current key */
-            char file[MAX_FILENAME_LENGTH + 1];
+            char file[MAX_PATH + 1];
             size_t file_number =
                 (loaded_file == -1) ? meta_count++ : loaded_file;
             metatable[file_number].file_number = file_number;
-            snprintf(file, MAX_FILENAME_LENGTH, "%s/%lu", dir_path,
-                     file_number);
+            snprintf(file, MAX_PATH, "%s/%lu", dir_path, file_number);
             bptree.split_and_save_one(&metatable[file_number], file, key);
             loaded_file = -1;
             min_key = bptree.get_min_key();

@@ -1,12 +1,10 @@
+#include "definition.h"
 #include "utils.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
-#define MAX_FILENAME_LENGTH 50
-#define VALUE_LENGTH 128
 
 int main(int argc, char *argv[]) {
     if (argc > 9) {
@@ -15,7 +13,7 @@ int main(int argc, char *argv[]) {
     }
 
     int64_t total_put, total_get, total_scan;
-    char filename[MAX_FILENAME_LENGTH] = "a.input";
+    char filename[MAX_PATH] = "a.input";
 
     /* Sets values */
     int put_index = get_arg_index(argc, argv, "-put");
@@ -26,7 +24,7 @@ int main(int argc, char *argv[]) {
     total_get = (get_index == -1) ? 0 : atoll(argv[get_index + 1]);
     total_scan = (scan_index == -1) ? 0 : atoll(argv[scan_index + 1]);
     if (output_index != -1)
-        strncpy(filename, argv[output_index + 1], MAX_FILENAME_LENGTH);
+        strncpy(filename, argv[output_index + 1], MAX_PATH);
 
     /* Generates cmd file */
     srand(time(NULL));

@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_FILENAME_LENGTH 50
 #define MAX_CMD_LENGTH 200
 
 static void manage_database(const char *f_in);
@@ -23,8 +22,8 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    char f_in[MAX_FILENAME_LENGTH];
-    strncpy(f_in, argv[1], MAX_FILENAME_LENGTH);
+    char f_in[MAX_PATH + 1];
+    strncpy(f_in, argv[1], MAX_PATH);
 
     manage_database(f_in);
 
@@ -49,9 +48,9 @@ static void manage_database(const char *f_in) {
     }
 
     /* Sets the output filename */
-    char f_out[MAX_FILENAME_LENGTH];
+    char f_out[MAX_PATH + 1];
     char *slash = strrchr(f_in, '/');
-    strncpy(f_out, (slash == NULL) ? f_in : slash + 1, MAX_FILENAME_LENGTH);
+    strncpy(f_out, (slash == NULL) ? f_in : slash + 1, MAX_PATH);
     dot = strrchr(f_out, '.');
     strncpy(dot, ".output", 8);
 
