@@ -121,9 +121,33 @@ static void get(const uint64_t key) {
             found =
                 (key >= metatable[i].start_key && key <= metatable[i].end_key);
             if (found) {
-                swap_files(&metatable[i]);
-                min_key = metatable[i].start_key;
-                max_key = metatable[i].end_key;
+                /* Reads the file without swapping files */
+                static char path[MAX_PATH + 1];
+                snprintf(path, MAX_PATH, "storage/%lu",
+                         metatable[i].file_number);
+                FILE *file = safe_fopen(path, "rb");
+                uint64_t tmp_key;
+                static char tmp_value[VALUE_LENGTH + 1];
+                for (int j = 0; j < metatable[i].total_keys; j++) {
+                    safe_fread(&tmp_key, sizeof(uint64_t), 1, file);
+                    safe_fread(tmp_value, sizeof(char), VALUE_LENGTH + 1, file);
+                    if (tmp_key >= key) {
+                        /* Identical key found */
+                        if (tmp_key == key) {
+                            if (first_line) {
+                                first_line = false;
+                            } else {
+                                safe_fwrite(newline, sizeof(char), 1, fp);
+                            }
+                            safe_fwrite(tmp_value, sizeof(char), VALUE_LENGTH,
+                                        fp);
+                        } else {
+                            found = false;
+                        }
+                        break;
+                    }
+                }
+                fclose(file);
                 break;
             }
         }
@@ -134,8 +158,8 @@ static void get(const uint64_t key) {
                 safe_fwrite(newline, sizeof(char), 1, fp);
             }
             safe_fwrite(empty_str, sizeof(char), strlen(empty_str), fp);
-            return;
         }
+        return;
     }
 
     /* Writes the result to output file */
