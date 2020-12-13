@@ -22,7 +22,7 @@ typedef struct bptree {
     void (*load)(const char *filepath, const uint64_t total_keys);
     /* Saves the B+ tree to file and updates metadata. */
     void (*save)(metadata_t *metadata, const char *filepath);
-    /* Splits the B+ tree into two parts and saves one of them to file,
+    /* Splits the B+ tree into two parts and saves one of the two to file,
      * according to key. */
     void (*split_and_save_one)(metadata_t *metadata, const char *filepath,
                                const uint64_t key);
