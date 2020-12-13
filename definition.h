@@ -3,7 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define MAX_PATH 50
+#define MAX_PATH 128
 #define VALUE_LENGTH 128
 
 typedef struct {
