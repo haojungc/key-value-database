@@ -269,7 +269,7 @@ static void swap_files(metadata_t *metadata) {
 
     /* Loads B+ tree */
     snprintf(filepath, MAX_PATH, "%s/%lu", dir_path, metadata->file_number);
-    bptree.load(metadata, filepath);
+    bptree.load(filepath, metadata->total_keys);
 
     loaded_file = metadata->file_number;
 }

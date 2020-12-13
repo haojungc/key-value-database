@@ -19,7 +19,7 @@ typedef struct node {
 } node_t;
 
 typedef struct bptree {
-    void (*load)(metadata_t *metadata, const char *filepath);
+    void (*load)(const char *filepath, const uint64_t total_keys);
     void (*save)(metadata_t *metadata, const char *filepath);
     void (*split_and_save_one)(metadata_t *metadata, const char *filepath,
                                const uint64_t key);

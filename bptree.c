@@ -20,8 +20,8 @@ static uint64_t min_key = UINT64_MAX;
 static uint64_t max_key = 0;
 
 /* static function prototypes */
-static void load(metadata_t *metadata, const char *_filepath);
-static void save(metadata_t *metadata, const char *_filepath);
+static void load(const char *filepath, const uint64_t total_keys);
+static void save(metadata_t *metadata, const char *filepath);
 static void split_and_save_one(metadata_t *metadata, const char *filepath,
                                const uint64_t key);
 static void free_memory();
@@ -63,17 +63,15 @@ static void insert_into_leaf(node_t *leaf, const uint64_t key, char *value);
 static void insert_into_node(node_t *node, node_t *child, const uint64_t key);
 
 /* static functions */
-static void load(metadata_t *metadata, const char *_filepath) {
-    DEBUG(
-        printf("loading %lu keys from %s\n", metadata->total_keys, _filepath);)
+static void load(const char *filepath, const uint64_t total_keys) {
+    DEBUG(printf("loading %lu keys from %s\n", total_keys, filepath);)
 
     if (head != NULL) {
         fprintf(stderr, "Error: attempt to overwrite a non-empty B+ tree\n");
         exit(EXIT_FAILURE);
     }
 
-    FILE *file = safe_fopen(_filepath, "rb");
-    size_t total_keys = metadata->total_keys;
+    FILE *file = safe_fopen(filepath, "rb");
     uint64_t key;
     static char value[VALUE_LENGTH + 1];
     for (int i = 0; i < total_keys; i++) {
@@ -84,8 +82,8 @@ static void load(metadata_t *metadata, const char *_filepath) {
     fclose(file);
 }
 
-static void save(metadata_t *metadata, const char *_filepath) {
-    DEBUG(printf("saving B+ tree to %s ...\n", _filepath);)
+static void save(metadata_t *metadata, const char *filepath) {
+    DEBUG(printf("saving B+ tree to %s ...\n", filepath);)
 
     if (head == NULL) {
         return;
@@ -97,7 +95,7 @@ static void save(metadata_t *metadata, const char *_filepath) {
         node = node->ptrs[0];
     }
 
-    FILE *file = safe_fopen(_filepath, "wb");
+    FILE *file = safe_fopen(filepath, "wb");
     size_t total_keys = 0;
     uint64_t start_key = node->keys[0];
     uint64_t end_key;
@@ -117,7 +115,7 @@ static void save(metadata_t *metadata, const char *_filepath) {
     metadata->end_key = end_key;
     metadata->total_keys = total_keys;
 
-    DEBUG(printf("saved %lu keys to %s\n", total_keys, _filepath);)
+    DEBUG(printf("saved %lu keys to %s\n", total_keys, filepath);)
     free_tree(head);
     head = NULL;
     buf_key_count = 0;
